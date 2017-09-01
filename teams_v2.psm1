@@ -1,3 +1,5 @@
+$skypeRegion = 'amer' #'amer' or 'emea'
+
 function connect-TeamsService {
   <#
       .SYNOPSIS
@@ -49,7 +51,7 @@ function connect-TeamsService {
   $null = [System.Reflection.Assembly]::LoadFrom($adal)
   $null = [System.Reflection.Assembly]::LoadFrom($adalforms)
   $clientId = 'd3590ed6-52b3-4102-aeff-aad2292ab01c'
-  $redirectUri = 'urn:ietf:wg:oauth:2.0:oob'
+  [Uri]$redirectUri = 'urn:ietf:wg:oauth:2.0:oob'
   $resourceAppIdURI = 'https://api.spaces.skype.com' #the API url.
   $authority = "https://login.windows.net/$Tenant"
   try {
@@ -59,6 +61,7 @@ function connect-TeamsService {
     $platformParameters = New-Object 'Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters' -ArgumentList 'Always'
     $userId = New-Object 'Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier' -ArgumentList ($User, 'OptionalDisplayableId')
     #New-Object 'Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationParameters'
+	
     if ($silent){$authResult = $authContext.AcquireTokenSilentAsync($resourceAppIdURI,$clientId,$userid,$platformParameters).Result}
     else {
     $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI,$clientId,$redirectUri,$platformParameters,$userId).Result}
@@ -125,8 +128,8 @@ function get-Team {
     $results = @()
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}
     $teamsfiltered = $Teams|Where-Object {$($teaminfo.threadProperties.spaceThreadTopic) -contains $_.displayname} #filter based on teams and skip groups
     $teamsfiltered
   }
@@ -162,7 +165,7 @@ function new-Team {
       Private {1}
       Public {3}
     }
-    $uri = 'https://api.teams.skype.com/emea/beta/teams/create'
+    $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/create"
     $postparams = @{
       'alias' = $alias
       'description' = $description
@@ -170,6 +173,7 @@ function new-Team {
       'smtpAddress'=  $smtpaddress
       'AccessType' = $AcccessType
     }
+	$uri
     $result = Invoke-RestMethod -Uri $uri -Headers $TeamsAuthToken -Method post -Body $($postparams|convertto-json)
     Write-Verbose "added team $displayName"
     Write-Verbose "$($result.value)"
@@ -202,7 +206,7 @@ function remove-Team {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -215,11 +219,11 @@ function remove-Team {
       if ($($TeamId.groupId) -eq $null){write-error 'team not found'
       throw ("team $Team couldn't be found")}
     }    
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
     if ($pscmdlet.ShouldProcess($($teamid.displayname))) {
-      $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/delete"
+      $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/delete"
       $result = Invoke-RestMethod -Uri $uri -Headers $TeamsAuthToken -Method Delete
     }
     Write-Verbose "remove team $($teamid.displayname) "
@@ -253,7 +257,7 @@ function get-TeamMember {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -267,9 +271,9 @@ function get-TeamMember {
       throw ("team $Team couldn't be found")}
     }
     write-verbose "teamid: $TeamId"
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
-    $uri = "https://api.teams.skype.com/emea/beta/teams/$teamurl/members"
+    $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$teamurl/members"
     Write-Verbose "$teamurl"
     Write-Verbose 'finding team member'
     #finding team member
@@ -306,7 +310,7 @@ function add-TeamMember {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -325,7 +329,7 @@ function add-TeamMember {
       if ($($Member.length) -eq '36' -and $Member -match "[0123456789abcdef-]{$($Member.length)}"){
       $MemberResult = $Member}
       else {
-        $MemberResult = (Invoke-RestMethod -Uri ' https://api.teams.skype.com/emea/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true' -Method Post -Headers $TeamsAuthToken -Body $Member).value.objectId #assuming correct UPN to be send.
+        $MemberResult = (Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true" -Method Post -Headers $TeamsAuthToken -Body $Member).value.objectId #assuming correct UPN to be send.
         if ($MemberResult -eq $null){write-error 'member not found'
         throw ("UserPrincipalName $Member couldn't be found")}
       }
@@ -334,10 +338,10 @@ function add-TeamMember {
         role = '0' #role 0 is used for members, 1 is used for owners
     }}
     Write-Verbose "members: $Members"
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
-    $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/bulkUpdateRoledMembers?allowBotsInChannel=true"
+    $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/bulkUpdateRoledMembers?allowBotsInChannel=true"
     $postparams = @{
       'users' = @($Members)
       'groupId' = $($TeamId.groupId)
@@ -376,7 +380,7 @@ function remove-TeamMember {
     $results = @()
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -390,7 +394,7 @@ function remove-TeamMember {
       throw ("team $Team couldn't be found")}
     }
     write-verbose "teamid: $TeamId"
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
     Write-Verbose 'finding team member'
@@ -399,12 +403,12 @@ function remove-TeamMember {
       if ($($Member.length) -eq '36' -and $Member -match "[0123456789abcdef-]{$($Member.length)}"){
       $MemberResult = $Member}
       else {
-        $MemberResult = Invoke-RestMethod -Uri ' https://api.teams.skype.com/emea/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true' -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
+        $MemberResult = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true" -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
         if ($MemberResult.value.objectid -eq $null){write-error 'member not found'
         throw ("UserPrincipalName $Member couldn't be found")}
       }
       Write-Verbose "member: $Member"
-      $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/members"
+      $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/members"
       $postparams = @{
         teamMri = $($TeamURL)
         updateType = 'Left'
@@ -449,7 +453,7 @@ function convert-TeamMemberToOwner {
     $results = @()
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -462,7 +466,7 @@ function convert-TeamMemberToOwner {
       if ($($TeamId.groupId) -eq $null){write-error 'team not found'
       throw ("team $Team couldn't be found")}
     }
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
     Write-Verbose 'finding team member'
@@ -471,12 +475,12 @@ function convert-TeamMemberToOwner {
       if ($($Member.length) -eq '36' -and $Member -match "[0123456789abcdef-]{$($Member.length)}"){
       $MemberResult = $Member}
       else {
-        $MemberResult = Invoke-RestMethod -Uri ' https://api.teams.skype.com/emea/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true' -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
+        $MemberResult = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true" -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
         if ($MemberResult.value.objectid -eq $null){write-error 'member not found'
         throw ("UserPrincipalName $Member couldn't be found")}
       }
       Write-Verbose "member: $Member"
-      $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/members"
+      $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/members"
       $postparams = @{
         teamMri = $($teamurl)
         updateType = 'Promoted'
@@ -520,7 +524,7 @@ function convert-TeamOwnerToMember {
     $results = @()
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -533,7 +537,7 @@ function convert-TeamOwnerToMember {
       if ($($TeamId.groupId) -eq $null){write-error 'team not found'
       throw ("team $Team couldn't be found")}
     }
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
     Write-Verbose 'finding team member'
@@ -542,12 +546,12 @@ function convert-TeamOwnerToMember {
       if ($($Member.length) -eq '36' -and $Member -match "[0123456789abcdef-]{$($Member.length)}"){
       $MemberResult = $Member}
       else {
-        $MemberResult = Invoke-RestMethod -Uri ' https://api.teams.skype.com/emea/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true' -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
+        $MemberResult = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/users/search?includeDLs=true&includeBots=false&enableGuest=false&skypeTeamsInfo=true" -Method Post -Headers $TeamsAuthToken -Body $Member #assuming correct UPN to be send.
         if ($MemberResult.value.objectid -eq $null){write-error 'member not found'
         throw ("UserPrincipalName $Member couldn't be found")}
       }
       Write-Verbose "member: $Member"
-      $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/members?allowBotsInChannel=true"
+      $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/members?allowBotsInChannel=true"
       $postparams = @{
         teamMri = $($teamurl)
         updateType = 'Demoted'
@@ -589,7 +593,7 @@ function get-TeamChannel {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -602,7 +606,7 @@ function get-TeamChannel {
       if ($($TeamId.groupId) -eq $null){write-error 'team not found'
       throw ("team $Team couldn't be found")}
     }    
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $channels = ($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).threadProperties.topics
     Write-Verbose "$teamurl"
     $($channels|ConvertFrom-Json)
@@ -636,7 +640,7 @@ function add-TeamChannel {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
       Write-Verbose 'ip detected, skipping lookup'
       #$TeamId = $Team
@@ -649,10 +653,10 @@ function add-TeamChannel {
       if ($($TeamId.groupId) -eq $null){write-error 'team not found'
       throw ("team $Team couldn't be found")}
     }    
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $teamurl = ([uri]($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).targetLink).Segments[3]
     Write-Verbose "$teamurl"
-    $uri = "https://api.teams.skype.com/emea/beta/teams/$($teamurl)/channels"
+    $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/$($teamurl)/channels"
         $postparams = @{
         'DisplayName' = $DisplayName
         'Description' = $Description
@@ -690,7 +694,7 @@ function remove-TeamChannel {
     #check if ID is given as parameter.
     Write-Verbose 'validating parameter'
     Write-Verbose 'getting overview of all teams'
-    $Teams = Invoke-RestMethod -Uri 'https://api.teams.skype.com/emea/beta/teams/usergroups?teamType=null' -Method get -Headers $TeamsAuthToken
+    $Teams = Invoke-RestMethod -Uri "https://api.teams.skype.com/$skypeRegion/beta/teams/usergroups?teamType=null" -Method get -Headers $TeamsAuthToken
     if ($($team.length) -eq '36' -and $Team -match "[0123456789abcdef-]{$($Team.length)}"){
         Write-Verbose 'ip detected, skipping lookup'
         #$TeamId = $Team
@@ -703,11 +707,11 @@ function remove-TeamChannel {
             if ($($TeamId.groupId) -eq $null){write-error 'team not found'
             throw ("team $Team couldn't be found")}
     }    
-    $teaminfo = (Invoke-RestMethod -Uri 'https://emea-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream' -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
+    $teaminfo = (Invoke-RestMethod -Uri "https://$skypeRegion-client-ss.msg.skype.com/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=300&startTime=1&targetType=Passport|Skype|Lync|Thread|NotificationStream" -Method Get -Headers $skypetoken).conversations|Where-Object {$_.threadProperties.isdeleted -ne 'true' -and $_.threadProperties.threadType -eq 'space'}  
     $channels = (($teaminfo|Where-Object {$_.threadProperties.spaceThreadTopic -eq $TeamId.displayName}).threadProperties.topics|ConvertFrom-Json)
     $ChannelID = $($channels|where {$_.name -eq "$Channel"}).id
     write-verbose "$ChannelID"
-    $uri = "https://api.teams.skype.com/emea/beta/teams/channels/$ChannelID/"
+    $uri = "https://api.teams.skype.com/$skypeRegion/beta/teams/channels/$ChannelID/"
     if ($pscmdlet.ShouldProcess($Channel)) {
       $result = Invoke-RestMethod -Uri $Uri -Method Delete -Headers $TeamsAuthToken 
       Write-Verbose "$teamurl"
